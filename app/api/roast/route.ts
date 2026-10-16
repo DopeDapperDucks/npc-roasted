@@ -19,9 +19,13 @@ export async function POST(req:NextRequest){
     // A best-effort in-memory throttle. Replace with a durable shared rate limiter before public launch.
     const metaURL=new URL(`https://eth-mainnet.g.alchemy.com/nft/v3/${process.env.ALCHEMY_API_KEY}/getNFTMetadata`);
     metaURL.searchParams.set("contractAddress",CONTRACTS[collection]);metaURL.searchParams.set("tokenId",tokenId);
+    metaURL.searchParams.set("refreshCache","true");
     const m=await fetch(metaURL,{cache:"no-store",signal:AbortSignal.timeout(12000)});
     if(!m.ok)return fail(m.status===404?"Token not found.":"NFT lookup failed. Please try again.",502);
-    const nft=await m.json(); const traits=Array.isArray(nft.raw?.metadata?.attributes)?nft.raw.metadata.attributes:[];
+    const nft=await m.json();
+    if(nft.contract?.address && nft.contract.address.toLowerCase()!==CONTRACTS[collection].toLowerCase())return fail("NFT provider returned the wrong collection.",502);
+    if(nft.tokenId && BigInt(nft.tokenId).toString()!==BigInt(tokenId).toString())return fail("NFT provider returned a different token ID.",502);
+    const traits=Array.isArray(nft.raw?.metadata?.attributes)?nft.raw.metadata.attributes:[];
     // Alchemy can return missing conversions or raw IPFS/GIF/SVG artwork.
     const normalizeUrl=(value:unknown):string|null=>{
       if(typeof value!=="string" || !value.trim())return null;
@@ -32,9 +36,11 @@ export async function POST(req:NextRequest){
       if(value.startsWith("ar://"))return `https://arweave.net/${value.slice(5)}`;
       return publicHttps(value)?value:null;
     };
-    const rawCandidates=[nft.image?.pngUrl,nft.image?.cachedUrl,nft.image?.thumbnailUrl,nft.image?.originalUrl,nft.raw?.metadata?.image,nft.raw?.metadata?.image_url];
+    // Prefer revealed metadata artwork, not Alchemy's potentially stale cached thumbnail.
+    const rawCandidates=[nft.raw?.metadata?.image,nft.raw?.metadata?.image_url,nft.image?.originalUrl,nft.image?.pngUrl,nft.image?.cachedUrl,nft.image?.thumbnailUrl];
     const candidates=[...new Set(rawCandidates.map(normalizeUrl).filter((u):u is string=>!!u))];
     if(!candidates.length)return fail("No image URL was returned by Alchemy for this token.",422);
+    console.info("NPC artwork sources",{collection,tokenId,sourceHosts:candidates.map(u=>new URL(u).hostname)});
     let dataUrl:string|null=null;
     for(const url of candidates){
       try{
