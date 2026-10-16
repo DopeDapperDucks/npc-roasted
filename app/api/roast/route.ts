@@ -1,3 +1,4 @@
+// NPC ROASTED - OpenSea metadata artwork fix
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 export const runtime = "nodejs";
