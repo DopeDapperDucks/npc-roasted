@@ -11,7 +11,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function roast() {
-    setError(""); setBusy(true);
+setError(""); setResult(null); setBusy(true);
     try {
       const res = await fetch("/api/roast",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tokenId,collection,level})});
       const data = await res.json();
