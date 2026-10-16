@@ -11,7 +11,7 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function roast() {
-setError(""); setResult(null); setBusy(true);
+    setError(""); setResult(null); setBusy(true);
     try {
       const res = await fetch("/api/roast",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tokenId,collection,level})});
       const data = await res.json();
@@ -23,24 +23,115 @@ setError(""); setResult(null); setBusy(true);
   async function downloadCard() {
     if (!result) return;
     try {
-      const c = document.createElement("canvas"); c.width=1200; c.height=1500;
-      const ctx=c.getContext("2d"); if(!ctx) return;
-      ctx.fillStyle="#101014";ctx.fillRect(0,0,1200,1500);
-      ctx.fillStyle="#ff6b29";ctx.fillRect(0,0,1200,22);
-      ctx.fillStyle="#ffffff";ctx.font="bold 85px Arial";ctx.fillText("NPC ROASTED.",72,128);
-      ctx.fillStyle="#a5a5ab";ctx.font="32px Arial";ctx.fillText(`${result.collection.toUpperCase()} #${result.tokenId}  /  ${level.toUpperCase()}`,74,180);
-      const image=new Image();image.src=result.imageDataUrl; await new Promise<void>((resolve,reject)=>{ image.onload=()=>resolve();image.onerror=reject; });
-      ctx.fillStyle="#23232a";ctx.fillRect(72,220,1056,720);
-      const scale=Math.min(1056/image.width,720/image.height);const w=image.width*scale,h=image.height*scale;
-      ctx.drawImage(image,72+(1056-w)/2,220+(720-h)/2,w,h);
-      ctx.fillStyle="#ff6b29";ctx.font="bold 32px Arial";ctx.fillText("THE VERDICT",74,1012);
-      ctx.fillStyle="#ffffff";ctx.font="bold 46px Arial";
-      const words=result.roast.split(/\s+/);let line="",y=1075;
-      for (const word of words){const t=line?line+" "+word:word;if(ctx.measureText(t).width>1040 && line){ctx.fillText(line,74,y);line=word;y+=59;}else line=t;}
-      if(line)ctx.fillText(line,74,y);
-      ctx.fillStyle="#85858d";ctx.font="28px Arial";ctx.fillText("NO WALLET. NO MERCY. JUST BAD DECISIONS.",74,1444);
-      const link=document.createElement("a");link.download=`npc-roasted-${result.tokenId}.png`;link.href=c.toDataURL("image/png");link.click();
-    } catch {setError("Could not export the image. Please try again.");}
+      const c = document.createElement("canvas");
+      c.width = 1200; c.height = 1600;
+      const ctx = c.getContext("2d");
+      if (!ctx) throw new Error("Canvas is unavailable");
+      const orange = "#ff6b29";
+      const white = "#f9f7f4";
+      const muted = "#a3a3ae";
+      const card = "#202027";
+      const edge = "#383841";
+
+      function roundedRect(x:number,y:number,w:number,h:number,r:number,fill:string) {
+        ctx.beginPath(); ctx.roundRect(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();
+      }
+      function fittedLine(text:string,maxWidth:number,size:number,minSize:number,weight="bold") {
+        let fontSize=size;
+        do {ctx.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx.measureText(text).width<=maxWidth)break;fontSize-=2;} while(fontSize>minSize);
+        return fontSize;
+      }
+      function wrapText(text:string,maxWidth:number,fontSize:number,maxLines:number):string[] {
+        ctx.font=`bold ${fontSize}px Arial, sans-serif`;
+        const words=text.trim().split(/\s+/);
+        const lines:string[]=[];
+        let current="";
+        for(const word of words){
+          const attempt=current?current+" "+word:word;
+          if(ctx.measureText(attempt).width<=maxWidth){current=attempt;continue;}
+          if(current){lines.push(current);current=word;}
+          else {lines.push(word);current="";}
+        }
+        if(current)lines.push(current);
+        if(lines.length>maxLines){
+          const cropped=lines.slice(0,maxLines);
+          let last=cropped[maxLines-1];
+          while(last.length && ctx.measureText(last+"…").width>maxWidth)last=last.slice(0,-1);
+          cropped[maxLines-1]=last.trimEnd()+"…";
+          return cropped;
+        }
+        return lines;
+      }
+
+      ctx.fillStyle="#111116";ctx.fillRect(0,0,1200,1600);
+      ctx.fillStyle=orange;ctx.fillRect(0,0,1200,18);
+      ctx.font="bold 84px Arial, sans-serif";ctx.fillStyle=white;
+      ctx.fillText("NPC ROASTED.",64,122);
+      ctx.font="bold 25px Arial, sans-serif";ctx.fillStyle=orange;
+      ctx.fillText("OFFICIAL DAMAGE REPORT",70,170);
+      ctx.font="27px Arial, sans-serif";ctx.fillStyle=muted;
+      ctx.textAlign="right";
+      ctx.fillText(`${result.collection.toUpperCase()} #${result.tokenId}`,1130,168);
+      ctx.textAlign="left";
+
+      // Artwork is drawn inside a fixed viewport without distorting the NFT.
+      roundedRect(64,207,1072,694,22,card);
+      const nftImage = new Image();
+      nftImage.src=result.imageDataUrl;
+      await new Promise<void>((resolve,reject)=>{
+        if(nftImage.complete && nftImage.naturalWidth>0){resolve();return;}
+        nftImage.onload=()=>resolve();nftImage.onerror=()=>reject(new Error("Artwork failed to load"));
+      });
+      const ratio=Math.min(1072/nftImage.naturalWidth,694/nftImage.naturalHeight);
+      const dw=nftImage.naturalWidth*ratio,dh=nftImage.naturalHeight*ratio;
+      ctx.drawImage(nftImage,64+(1072-dw)/2,207+(694-dh)/2,dw,dh);
+      ctx.strokeStyle=edge;ctx.lineWidth=2;ctx.strokeRect(64,207,1072,694);
+
+      ctx.font="bold 26px Arial, sans-serif";ctx.fillStyle=orange;
+      ctx.fillText("THE VERDICT",68,951);
+      const headline=(result.headline||"ABSOLUTELY COOKED").toUpperCase();
+      const headlineSize=fittedLine(headline,1060,37,22);
+      ctx.font=`bold ${headlineSize}px Arial, sans-serif`;ctx.fillStyle=white;
+      ctx.fillText(headline,68,1000);
+
+      // Keep the full joke whenever possible; scale it before truncating.
+      const roastText=`“${result.roast}”`;
+      let roastSize=43;
+      let roastLines=wrapText(roastText,1055,roastSize,99);
+      while(roastLines.length>4 && roastSize>28){roastSize-=2;roastLines=wrapText(roastText,1055,roastSize,99);}
+      roastLines=wrapText(roastText,1055,roastSize,4);
+      ctx.font=`bold ${roastSize}px Arial, sans-serif`;ctx.fillStyle=white;
+      roastLines.forEach((line,i)=>ctx.fillText(line,68,1062+i*(roastSize+14)));
+
+      // Stat boxes are always included in the PNG, not only on the webpage.
+      const statStart=1300,statW=519,statH=104,gapX=26,gapY=16;
+      const stats=result.stats.slice(0,4);
+      for(let i=0;i<4;i++){
+        const stat=stats[i]||{label:"UNKNOWN",value:"N/A"};
+        const x=64+(i%2)*(statW+gapX);
+        const y=statStart+Math.floor(i/2)*(statH+gapY);
+        roundedRect(x,y,statW,statH,15,card);
+        ctx.fillStyle=orange;ctx.font="bold 20px Arial, sans-serif";
+        ctx.fillText(stat.label.toUpperCase().slice(0,36),x+22,y+35);
+        const valueSize=fittedLine(stat.value,statW-44,31,18);
+        ctx.fillStyle=white;ctx.font=`bold ${valueSize}px Arial, sans-serif`;
+        ctx.fillText(stat.value,x+22,y+78,statW-44);
+      }
+      ctx.fillStyle=edge;ctx.fillRect(64,1546,1072,2);
+      ctx.fillStyle=muted;ctx.font="bold 23px Arial, sans-serif";
+      ctx.fillText("NO WALLET. NO MERCY. JUST BAD DECISIONS.",68,1580);
+      ctx.textAlign="right";ctx.fillStyle=orange;
+      ctx.fillText("#NPCRoasted",1130,1580);
+      ctx.textAlign="left";
+
+      const link=document.createElement("a");
+      link.download=`npc-roasted-${result.collection}-${result.tokenId}.png`;
+      link.href=c.toDataURL("image/png");
+      document.body.appendChild(link);link.click();link.remove();
+    } catch(e) {
+      console.error("Roast card export failed",e);
+      setError("Could not export the image. Please try again.");
+    }
   }
   function share() { if(!result)return; const text=`NPC #${result.tokenId} just got roasted 🔥\n\n“${result.roast}”\n\n#NPCRoasted`;window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,"_blank","noopener,noreferrer"); }
   return <main className="shell"><header><div className="brand"><span className="flame">🔥</span> NPC ROASTED<span className="dot">.</span></div><div className="tag">YOUR JPEG HAS FEELINGS. WE DON'T.</div></header>
