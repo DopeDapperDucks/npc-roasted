@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 export const runtime = "nodejs";
 const CONTRACTS: Record<string,string> = {
   npc: "0xa2a6063b910fc7a7a286196f6c9b62b2797fa0ae",
@@ -21,14 +22,37 @@ export async function POST(req:NextRequest){
     const m=await fetch(metaURL,{cache:"no-store",signal:AbortSignal.timeout(12000)});
     if(!m.ok)return fail(m.status===404?"Token not found.":"NFT lookup failed. Please try again.",502);
     const nft=await m.json(); const traits=Array.isArray(nft.raw?.metadata?.attributes)?nft.raw.metadata.attributes:[];
-    const url=[nft.image?.pngUrl,nft.image?.cachedUrl,nft.image?.originalUrl].find((u:unknown)=>typeof u==="string"&&publicHttps(u));
-    if(!url)return fail("No supported HTTPS artwork URL found for this NFT.",422);
-    const imgRes=await fetch(url,{signal:AbortSignal.timeout(12000),redirect:"error"});
-    if(!imgRes.ok)return fail("NFT artwork was unavailable.",502);
-    const type=(imgRes.headers.get("content-type")||"").split(";")[0].toLowerCase();
-    if(!["image/png","image/jpeg","image/webp"].includes(type))return fail("This NFT image format needs conversion to PNG, JPEG or WebP.",422);
-    const bytes=Buffer.from(await imgRes.arrayBuffer());if(bytes.length>8_000_000)return fail("NFT image too large.",422);
-    const dataUrl=`data:${type};base64,${bytes.toString("base64")}`;
+    // Alchemy can return missing conversions or raw IPFS/GIF/SVG artwork.
+    const normalizeUrl=(value:unknown):string|null=>{
+      if(typeof value!=="string" || !value.trim())return null;
+      if(value.startsWith("ipfs://")){
+        const path=value.replace(/^ipfs:\/\/(?:ipfs\/)?/,"");
+        return `https://ipfs.io/ipfs/${path}`;
+      }
+      if(value.startsWith("ar://"))return `https://arweave.net/${value.slice(5)}`;
+      return publicHttps(value)?value:null;
+    };
+    const rawCandidates=[nft.image?.pngUrl,nft.image?.cachedUrl,nft.image?.thumbnailUrl,nft.image?.originalUrl,nft.raw?.metadata?.image,nft.raw?.metadata?.image_url];
+    const candidates=[...new Set(rawCandidates.map(normalizeUrl).filter((u):u is string=>!!u))];
+    if(!candidates.length)return fail("No image URL was returned by Alchemy for this token.",422);
+    let dataUrl:string|null=null;
+    for(const url of candidates){
+      try{
+        const imgRes=await fetch(url,{signal:AbortSignal.timeout(15000),redirect:"error",headers:{"Accept":"image/*"}});
+        if(!imgRes.ok)continue;
+        const declaredSize=Number(imgRes.headers.get("content-length")||0);
+        if(declaredSize>12_000_000)continue;
+        const bytes=Buffer.from(await imgRes.arrayBuffer());
+        if(!bytes.length||bytes.length>12_000_000)continue;
+        const png=await sharp(bytes,{limitInputPixels:25_000_000,animated:false})
+          .rotate().resize({width:1024,height:1024,fit:"inside",withoutEnlargement:true})
+          .png().toBuffer();
+        if(png.length>8_000_000)continue;
+        dataUrl=`data:image/png;base64,${png.toString("base64")}`;
+        break;
+      }catch(e){console.warn("Artwork candidate failed:",new URL(url).hostname,e instanceof Error?e.message:"unknown error");}
+    }
+    if(!dataUrl)return fail("Alchemy returned artwork links, but none could be downloaded and converted. Check Vercel logs for Artwork candidate failed.",422);
     const prompt=`You are the comedian behind NPC ROASTED, a silly roast site for illustrated NFT characters. Examine the ACTUAL ATTACHED ARTWORK first. Target the CHARACTER's visible clothes, accessories, expression, pose, colors and combinations of traits. Mention at least TWO specific, visually verified details in the roast. Do not invent features. Use traits only as supporting context, never as proof of visual details. This is fictional lighthearted character comedy, not an attack on the owner. Avoid slurs, protected-class attacks, sexual content, violent threats, appearance/body-shaming of real people, or generic crypto/trading jokes. Roast level: ${level}. ${level==="Mild"?"Gentle, silly teasing.":level==="Spicy"?"Sharp, punchy, surprising joke.":"Savage absurd comedy without hateful or personally abusive content."} Return ONLY valid JSON with keys headline (2-5 words), roast (one or two punchy sentences, 12-40 words), traitsSeen (array of 2-4 genuinely visible traits), stats (array of exactly 4 objects with label and value, short and funny). Avoid claiming knowledge of the character's real identity. NFT metadata trait hints: ${JSON.stringify(traits).slice(0,2000)}.`;
     const ai=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-4.1-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:dataUrl}]}],text:{format:{type:"json_schema",name:"npc_roast",strict:true,schema:{type:"object",additionalProperties:false,properties:{headline:{type:"string"},roast:{type:"string"},traitsSeen:{type:"array",items:{type:"string"}},stats:{type:"array",items:{type:"object",additionalProperties:false,properties:{label:{type:"string"},value:{type:"string"}},required:["label","value"]}}},required:["headline","roast","traitsSeen","stats"]}}},max_output_tokens:500}),signal:AbortSignal.timeout(45000)});
     if(!ai.ok){console.error("OpenAI response status",ai.status);return fail("AI roast generation failed. Check server logs and API billing.",502);}
