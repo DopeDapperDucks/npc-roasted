@@ -17,48 +17,49 @@ export async function POST(req:NextRequest){
     const ip=(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim();const now=Date.now();const record=LIMIT.get(ip);if(record&&record.until>now&&record.count>=8)return fail("Too many roasts. Try again in an hour.",429);
     LIMIT.set(ip,record&&record.until>now?{...record,count:record.count+1}:{count:1,until:now+3600000});
     // A best-effort in-memory throttle. Replace with a durable shared rate limiter before public launch.
-    const metaURL=new URL(`https://eth-mainnet.g.alchemy.com/nft/v3/${process.env.ALCHEMY_API_KEY}/getNFTMetadata`);
-    metaURL.searchParams.set("contractAddress",CONTRACTS[collection]);metaURL.searchParams.set("tokenId",tokenId);
-    metaURL.searchParams.set("refreshCache","true");
-    const m=await fetch(metaURL,{cache:"no-store",signal:AbortSignal.timeout(12000)});
-    if(!m.ok)return fail(m.status===404?"Token not found.":"NFT lookup failed. Please try again.",502);
-    const nft=await m.json();
-    if(nft.contract?.address && nft.contract.address.toLowerCase()!==CONTRACTS[collection].toLowerCase())return fail("NFT provider returned the wrong collection.",502);
-    if(nft.tokenId && BigInt(nft.tokenId).toString()!==BigInt(tokenId).toString())return fail("NFT provider returned a different token ID.",502);
-    const traits=Array.isArray(nft.raw?.metadata?.attributes)?nft.raw.metadata.attributes:[];
-    // Alchemy can return missing conversions or raw IPFS/GIF/SVG artwork.
+    // OpenSea's currently displayed artwork is our primary image source.
+    // Alchemy metadata may still point to the collection's old unrevealed cartridge.
+    if (!process.env.OPENSEA_API_KEY) return fail("Set OPENSEA_API_KEY in Vercel to fetch revealed artwork.",503);
+    const osURL=`https://api.opensea.io/api/v2/chain/ethereum/contract/${CONTRACTS[collection]}/nfts/${tokenId}`;
+    const osResponse=await fetch(osURL,{
+      headers:{"x-api-key":process.env.OPENSEA_API_KEY,"accept":"application/json"},
+      cache:"no-store",signal:AbortSignal.timeout(15000)
+    });
+    if(!osResponse.ok){
+      console.error("OpenSea NFT lookup failed",{status:osResponse.status,collection,tokenId});
+      return fail(osResponse.status===404?"Token not found on OpenSea.":`OpenSea NFT lookup failed (HTTP ${osResponse.status}). Check OPENSEA_API_KEY and API access.`,502);
+    }
+    const os=await osResponse.json();
+    const token=os.nft;
+    if(!token)return fail("OpenSea returned no NFT data for this token.",502);
+    if(token.identifier && BigInt(token.identifier).toString()!==BigInt(tokenId).toString())return fail("OpenSea returned a different token ID.",502);
+    if(token.contract && String(token.contract).toLowerCase()!==CONTRACTS[collection].toLowerCase())return fail("OpenSea returned the wrong NFT contract.",502);
     const normalizeUrl=(value:unknown):string|null=>{
-      if(typeof value!=="string" || !value.trim())return null;
-      if(value.startsWith("ipfs://")){
-        const path=value.replace(/^ipfs:\/\/(?:ipfs\/)?/,"");
-        return `https://ipfs.io/ipfs/${path}`;
-      }
+      if(typeof value!=="string"||!value.trim())return null;
+      if(value.startsWith("ipfs://"))return `https://ipfs.io/ipfs/${value.replace(/^ipfs:\/\/(?:ipfs\/)?/,"")}`;
       if(value.startsWith("ar://"))return `https://arweave.net/${value.slice(5)}`;
       return publicHttps(value)?value:null;
     };
-    // Prefer revealed metadata artwork, not Alchemy's potentially stale cached thumbnail.
-    const rawCandidates=[nft.raw?.metadata?.image,nft.raw?.metadata?.image_url,nft.image?.originalUrl,nft.image?.pngUrl,nft.image?.cachedUrl,nft.image?.thumbnailUrl];
-    const candidates=[...new Set(rawCandidates.map(normalizeUrl).filter((u):u is string=>!!u))];
-    if(!candidates.length)return fail("No image URL was returned by Alchemy for this token.",422);
-    console.info("NPC artwork sources",{collection,tokenId,sourceHosts:candidates.map(u=>new URL(u).hostname)});
+    // Don't fall back to Alchemy's old pre-reveal media when OpenSea media fails.
+    const candidates=[...new Set([token.display_image_url,token.image_url].map(normalizeUrl).filter((u):u is string=>!!u))];
+    if(!candidates.length)return fail("OpenSea returned no usable image URL. The old reveal cartridge was not used.",422);
+    console.info("OpenSea revealed artwork",{collection,tokenId,sourceHosts:candidates.map(u=>new URL(u).hostname)});
     let dataUrl:string|null=null;
     for(const url of candidates){
       try{
-        const imgRes=await fetch(url,{signal:AbortSignal.timeout(15000),redirect:"error",headers:{"Accept":"image/*"}});
-        if(!imgRes.ok)continue;
-        const declaredSize=Number(imgRes.headers.get("content-length")||0);
-        if(declaredSize>12_000_000)continue;
-        const bytes=Buffer.from(await imgRes.arrayBuffer());
+        const response=await fetch(url,{cache:"no-store",signal:AbortSignal.timeout(15000),redirect:"error",headers:{accept:"image/*"}});
+        if(!response.ok)continue;
+        if(Number(response.headers.get("content-length")||0)>12_000_000)continue;
+        const bytes=Buffer.from(await response.arrayBuffer());
         if(!bytes.length||bytes.length>12_000_000)continue;
-        const png=await sharp(bytes,{limitInputPixels:25_000_000,animated:false})
-          .rotate().resize({width:1024,height:1024,fit:"inside",withoutEnlargement:true})
-          .png().toBuffer();
+        const png=await sharp(bytes,{limitInputPixels:25_000_000,animated:false}).rotate().resize({width:1024,height:1024,fit:"inside",withoutEnlargement:true}).png().toBuffer();
         if(png.length>8_000_000)continue;
         dataUrl=`data:image/png;base64,${png.toString("base64")}`;
         break;
-      }catch(e){console.warn("Artwork candidate failed:",new URL(url).hostname,e instanceof Error?e.message:"unknown error");}
+      }catch(e){console.warn("OpenSea artwork candidate failed",{host:new URL(url).hostname,error:e instanceof Error?e.message:"unknown"});}
     }
-    if(!dataUrl)return fail("Alchemy returned artwork links, but none could be downloaded and converted. Check Vercel logs for Artwork candidate failed.",422);
+    if(!dataUrl)return fail("OpenSea image could not be downloaded or converted. See Vercel Logs.",422);
+    const traits=Array.isArray(token.traits)?token.traits:[];
     const prompt=`You are the comedian behind NPC ROASTED, a silly roast site for illustrated NFT characters. Examine the ACTUAL ATTACHED ARTWORK first. Target the CHARACTER's visible clothes, accessories, expression, pose, colors and combinations of traits. Mention at least TWO specific, visually verified details in the roast. Do not invent features. Use traits only as supporting context, never as proof of visual details. This is fictional lighthearted character comedy, not an attack on the owner. Avoid slurs, protected-class attacks, sexual content, violent threats, appearance/body-shaming of real people, or generic crypto/trading jokes. Roast level: ${level}. ${level==="Mild"?"Gentle, silly teasing.":level==="Spicy"?"Sharp, punchy, surprising joke.":"Savage absurd comedy without hateful or personally abusive content."} Return ONLY valid JSON with keys headline (2-5 words), roast (one or two punchy sentences, 12-40 words), traitsSeen (array of 2-4 genuinely visible traits), stats (array of exactly 4 objects with label and value, short and funny). Avoid claiming knowledge of the character's real identity. NFT metadata trait hints: ${JSON.stringify(traits).slice(0,2000)}.`;
     const ai=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:process.env.OPENAI_MODEL||"gpt-4.1-mini",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:dataUrl}]}],text:{format:{type:"json_schema",name:"npc_roast",strict:true,schema:{type:"object",additionalProperties:false,properties:{headline:{type:"string"},roast:{type:"string"},traitsSeen:{type:"array",items:{type:"string"}},stats:{type:"array",items:{type:"object",additionalProperties:false,properties:{label:{type:"string"},value:{type:"string"}},required:["label","value"]}}},required:["headline","roast","traitsSeen","stats"]}}},max_output_tokens:500}),signal:AbortSignal.timeout(45000)});
     if(!ai.ok){console.error("OpenAI response status",ai.status);return fail("AI roast generation failed. Check server logs and API billing.",502);}
