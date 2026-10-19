@@ -38,7 +38,7 @@ ctx!.beginPath(); ctx!.roundRect(x,y,w,h,r);ctx!.fillStyle=fill;ctx!.fill();
       }
       function fittedLine(text:string,maxWidth:number,size:number,minSize:number,weight="bold") {
         let fontSize=size;
-        do {ctx.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx.measureText(text).width<=maxWidth)break;fontSize-=2;} while(fontSize>minSize);
+do {ctx!.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx!.measureText(text).width<=maxWidth)break;fontSize-=2;} while(fontSize>=minSize);
         return fontSize;
       }
       function wrapText(text:string,maxWidth:number,fontSize:number,maxLines:number):string[] {
