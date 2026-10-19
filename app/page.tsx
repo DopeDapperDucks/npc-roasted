@@ -42,13 +42,13 @@ do {ctx!.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx!.measureText(te
         return fontSize;
       }
       function wrapText(text:string,maxWidth:number,fontSize:number,maxLines:number):string[] {
-        ctx.font=`bold ${fontSize}px Arial, sans-serif`;
+        ctx!.font=`bold ${fontSize}px Arial, sans-serif`;
         const words=text.trim().split(/\s+/);
         const lines:string[]=[];
         let current="";
         for(const word of words){
           const attempt=current?current+" "+word:word;
-          if(ctx.measureText(attempt).width<=maxWidth){current=attempt;continue;}
+          if(ctx!.measureText(attempt).width<=maxWidth){current=attempt;continue;}
           if(current){lines.push(current);current=word;}
           else {lines.push(word);current="";}
         }
@@ -56,23 +56,23 @@ do {ctx!.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx!.measureText(te
         if(lines.length>maxLines){
           const cropped=lines.slice(0,maxLines);
           let last=cropped[maxLines-1];
-          while(last.length && ctx.measureText(last+"…").width>maxWidth)last=last.slice(0,-1);
+          while(last.length && ctx!.measureText(last+"…").width>maxWidth)last=last.slice(0,-1);
           cropped[maxLines-1]=last.trimEnd()+"…";
           return cropped;
         }
         return lines;
       }
 
-      ctx.fillStyle="#111116";ctx.fillRect(0,0,1200,1600);
-      ctx.fillStyle=orange;ctx.fillRect(0,0,1200,18);
-      ctx.font="bold 84px Arial, sans-serif";ctx.fillStyle=white;
-      ctx.fillText("NPC ROASTED.",64,122);
-      ctx.font="bold 25px Arial, sans-serif";ctx.fillStyle=orange;
-      ctx.fillText("OFFICIAL DAMAGE REPORT",70,170);
-      ctx.font="27px Arial, sans-serif";ctx.fillStyle=muted;
-      ctx.textAlign="right";
-      ctx.fillText(`${result.collection.toUpperCase()} #${result.tokenId}`,1130,168);
-      ctx.textAlign="left";
+      ctx!.fillStyle="#111116";ctx!.fillRect(0,0,1200,1600);
+      ctx!.fillStyle=orange;ctx!.fillRect(0,0,1200,18);
+      ctx!.font="bold 84px Arial, sans-serif";ctx!.fillStyle=white;
+      ctx!.fillText("NPC ROASTED.",64,122);
+      ctx!.font="bold 25px Arial, sans-serif";ctx!.fillStyle=orange;
+      ctx!.fillText("OFFICIAL DAMAGE REPORT",70,170);
+      ctx!.font="27px Arial, sans-serif";ctx!.fillStyle=muted;
+      ctx!.textAlign="right";
+      ctx!.fillText(`${result.collection.toUpperCase()} #${result.tokenId}`,1130,168);
+      ctx!.textAlign="left";
 
       // Artwork is drawn inside a fixed viewport without distorting the NFT.
       roundedRect(64,207,1072,694,22,card);
@@ -84,15 +84,15 @@ do {ctx!.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx!.measureText(te
       });
       const ratio=Math.min(1072/nftImage.naturalWidth,694/nftImage.naturalHeight);
       const dw=nftImage.naturalWidth*ratio,dh=nftImage.naturalHeight*ratio;
-      ctx.drawImage(nftImage,64+(1072-dw)/2,207+(694-dh)/2,dw,dh);
-      ctx.strokeStyle=edge;ctx.lineWidth=2;ctx.strokeRect(64,207,1072,694);
+      ctx!.drawImage(nftImage,64+(1072-dw)/2,207+(694-dh)/2,dw,dh);
+      ctx!.strokeStyle=edge;ctx!.lineWidth=2;ctx!.strokeRect(64,207,1072,694);
 
-      ctx.font="bold 26px Arial, sans-serif";ctx.fillStyle=orange;
-      ctx.fillText("THE VERDICT",68,951);
+      ctx!.font="bold 26px Arial, sans-serif";ctx!.fillStyle=orange;
+      ctx!.fillText("THE VERDICT",68,951);
       const headline=(result.headline||"ABSOLUTELY COOKED").toUpperCase();
       const headlineSize=fittedLine(headline,1060,37,22);
-      ctx.font=`bold ${headlineSize}px Arial, sans-serif`;ctx.fillStyle=white;
-      ctx.fillText(headline,68,1000);
+      ctx!.font=`bold ${headlineSize}px Arial, sans-serif`;ctx!.fillStyle=white;
+      ctx!.fillText(headline,68,1000);
 
       // Keep the full joke whenever possible; scale it before truncating.
       const roastText=`“${result.roast}”`;
@@ -100,8 +100,8 @@ do {ctx!.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx!.measureText(te
       let roastLines=wrapText(roastText,1055,roastSize,99);
       while(roastLines.length>4 && roastSize>28){roastSize-=2;roastLines=wrapText(roastText,1055,roastSize,99);}
       roastLines=wrapText(roastText,1055,roastSize,4);
-      ctx.font=`bold ${roastSize}px Arial, sans-serif`;ctx.fillStyle=white;
-      roastLines.forEach((line,i)=>ctx.fillText(line,68,1062+i*(roastSize+14)));
+      ctx!.font=`bold ${roastSize}px Arial, sans-serif`;ctx!.fillStyle=white;
+      roastLines.forEach((line,i)=>ctx!.fillText(line,68,1062+i*(roastSize+14)));
 
       // Stat boxes are always included in the PNG, not only on the webpage.
       const statStart=1300,statW=519,statH=104,gapX=26,gapY=16;
@@ -111,18 +111,18 @@ do {ctx!.font=`${weight} ${fontSize}px Arial, sans-serif`;if(ctx!.measureText(te
         const x=64+(i%2)*(statW+gapX);
         const y=statStart+Math.floor(i/2)*(statH+gapY);
         roundedRect(x,y,statW,statH,15,card);
-        ctx.fillStyle=orange;ctx.font="bold 20px Arial, sans-serif";
-        ctx.fillText(stat.label.toUpperCase().slice(0,36),x+22,y+35);
+        ctx!.fillStyle=orange;ctx!.font="bold 20px Arial, sans-serif";
+        ctx!.fillText(stat.label.toUpperCase().slice(0,36),x+22,y+35);
         const valueSize=fittedLine(stat.value,statW-44,31,18);
-        ctx.fillStyle=white;ctx.font=`bold ${valueSize}px Arial, sans-serif`;
-        ctx.fillText(stat.value,x+22,y+78,statW-44);
+        ctx!.fillStyle=white;ctx!.font=`bold ${valueSize}px Arial, sans-serif`;
+        ctx!.fillText(stat.value,x+22,y+78,statW-44);
       }
-      ctx.fillStyle=edge;ctx.fillRect(64,1546,1072,2);
-      ctx.fillStyle=muted;ctx.font="bold 23px Arial, sans-serif";
-      ctx.fillText("NO WALLET. NO MERCY. JUST BAD DECISIONS.",68,1580);
-      ctx.textAlign="right";ctx.fillStyle=orange;
-      ctx.fillText("#NPCRoasted",1130,1580);
-      ctx.textAlign="left";
+      ctx!.fillStyle=edge;ctx!.fillRect(64,1546,1072,2);
+      ctx!.fillStyle=muted;ctx!.font="bold 23px Arial, sans-serif";
+      ctx!.fillText("NO WALLET. NO MERCY. JUST BAD DECISIONS.",68,1580);
+      ctx!.textAlign="right";ctx!.fillStyle=orange;
+      ctx!.fillText("#NPCRoasted",1130,1580);
+      ctx!.textAlign="left";
 
       const link=document.createElement("a");
       link.download=`npc-roasted-${result.collection}-${result.tokenId}.png`;
