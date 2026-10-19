@@ -34,7 +34,7 @@ export default function Home() {
       const edge = "#383841";
 
       function roundedRect(x:number,y:number,w:number,h:number,r:number,fill:string) {
-        ctx.beginPath(); ctx.roundRect(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();
+ctx!.beginPath(); ctx!.roundRect(x,y,w,h,r);ctx!.fillStyle=fill;ctx!.fill();
       }
       function fittedLine(text:string,maxWidth:number,size:number,minSize:number,weight="bold") {
         let fontSize=size;
