@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
 
-type Stat = {label:string; value:string};
-type RoastResult = {tokenId:string; collection:string; imageDataUrl:string; roast:string; headline:string; stats:Stat[]; traitsSeen:string[]};
+type Stat = {label:string; value:string; score:number};
+type RoastResult = {tokenId:string; collection:string; imageDataUrl:string; roast:string; headline:string; stats:Stat[]; cookedLevel:number; traitsSeen:string[]};
 const LEVELS = ["Mild", "Spicy", "Absolutely Cooked"] as const;
+const clamp=(n:number)=>Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):0;
 const INK = "#202321", PAPER = "#f4f3ed", PALE = "#e7e7df", ACCENT = "#bd5a40";
 
 // Canvas helpers receive a non-null context explicitly: no ctx! assertions needed.
@@ -30,10 +31,10 @@ function lines(ctx:CanvasRenderingContext2D,text:string,maxW:number,size:number,
   cut[maxLines-1]=end.trimEnd()+"…";return cut;
 }
 async function makeCard(result:RoastResult){
-  const canvas=document.createElement("canvas");canvas.width=1200;canvas.height=1490;
+  const canvas=document.createElement("canvas");canvas.width=1200;canvas.height=1600;
   const ctx=canvas.getContext("2d");if(!ctx)throw new Error("Canvas is unavailable");
-  ctx.fillStyle="#d6d5cf";ctx.fillRect(0,0,1200,1490);
-  box(ctx,35,35,1130,1420,30,PAPER,INK);
+  ctx.fillStyle="#d6d5cf";ctx.fillRect(0,0,1200,1600);
+  box(ctx,35,35,1130,1530,30,PAPER,INK);
   box(ctx,55,55,1090,88,13,INK);
   ctx.fillStyle=PAPER;ctx.font="700 38px Arial, sans-serif";ctx.fillText("non playable character.",83,112);
   ctx.textAlign="right";ctx.font="700 24px Arial, sans-serif";ctx.fillText("ROAST SERIES 001",1112,108);ctx.textAlign="left";
@@ -51,21 +52,36 @@ async function makeCard(result:RoastResult){
   const titleSize=fitted(ctx,title,1030,53,30);ctx.font=`700 ${titleSize}px Arial, sans-serif`;ctx.fillText(title,80,1008,1030);
   ctx.fillStyle="#3c403d";
   let roastSize=34;let roastLines=lines(ctx,`“${result.roast}”`,1020,roastSize,10);
-  while(roastLines.length>3&&roastSize>25){roastSize-=2;roastLines=lines(ctx,`“${result.roast}”`,1020,roastSize,10);}
-  roastLines=lines(ctx,`“${result.roast}”`,1020,roastSize,3);
+  while(roastLines.length>2&&roastSize>25){roastSize-=2;roastLines=lines(ctx,`“${result.roast}”`,1020,roastSize,10);}
+  roastLines=lines(ctx,`“${result.roast}”`,1020,roastSize,2);
   ctx.font=`700 ${roastSize}px Arial, sans-serif`;roastLines.forEach((line,i)=>ctx.fillText(line,80,1060+i*43,1020));
-  const statY=Math.max(1140,1060+(roastLines.length-1)*43+44),statW=505,statH=96;
+  const statY=Math.max(1140,1060+(roastLines.length-1)*43+44),statW=505,statH=101;
   for(let i=0;i<4;i++){
-    const s=result.stats[i]||{label:"UNKNOWN",value:"N/A"};const x=78+(i%2)*539,y=statY+Math.floor(i/2)*110;
+    const s=result.stats[i]||{label:"UNKNOWN",value:"N/A",score:0};
+    const score=clamp(Number(s.score));
+    const x=78+(i%2)*539,y=statY+Math.floor(i/2)*114;
     box(ctx,x,y,statW,statH,10,PALE,"#c3c4bc");
-    ctx.fillStyle=ACCENT;ctx.fillRect(x+16,y+17,5,statH-34);
-    ctx.textAlign="right";ctx.fillStyle="#8a8c84";ctx.font="700 16px Arial, sans-serif";ctx.fillText(`${String(i+1).padStart(2,"0")} / 04`,x+statW-18,y+28);ctx.textAlign="left";
-    ctx.fillStyle="#767a74";ctx.font="700 19px Arial, sans-serif";ctx.fillText(s.label.toUpperCase(),x+34,y+29,statW-112);
-    ctx.fillStyle=INK;const size=fitted(ctx,s.value,statW-40,29,18);ctx.font=`700 ${size}px Arial, sans-serif`;ctx.fillText(s.value,x+34,y+73,statW-60);
+    ctx.fillStyle=ACCENT;ctx.fillRect(x+16,y+15,5,statH-30);
+    ctx.textAlign="right";ctx.fillStyle="#8a8c84";ctx.font="700 16px Arial, sans-serif";
+    ctx.fillText(`${score}/100`,x+statW-18,y+28);ctx.textAlign="left";
+    ctx.fillStyle="#767a74";ctx.font="700 18px Arial, sans-serif";
+    ctx.fillText(s.label.toUpperCase(),x+34,y+27,statW-146);
+    ctx.fillStyle=INK;const size=fitted(ctx,s.value,statW-65,27,17);
+    ctx.font=`700 ${size}px Arial, sans-serif`;ctx.fillText(s.value,x+34,y+61,statW-60);
+    ctx.fillStyle="#cacbc2";ctx.fillRect(x+34,y+79,statW-68,8);
+    ctx.fillStyle=ACCENT;ctx.fillRect(x+34,y+79,(statW-68)*score/100,8);
   }
-  ctx.fillStyle=INK;ctx.fillRect(78,1415,1040,2);
-  ctx.font="700 21px Arial, sans-serif";ctx.fillText("NPC ROASTED  /  NO WALLET. NO MERCY.",78,1443);
-  ctx.textAlign="right";ctx.fillStyle=ACCENT;ctx.fillText("npconchain.com",1120,1443);ctx.textAlign="left";
+  const cook=clamp(Number(result.cookedLevel));
+  const cookY=statY+2*114+10;
+  box(ctx,78,cookY,1040,86,11,INK);
+  ctx.fillStyle=PAPER;ctx.font="700 23px Arial, sans-serif";ctx.fillText("COOKED LEVEL",101,cookY+30);
+  ctx.textAlign="right";ctx.fillStyle="#ffc1a9";ctx.font="700 29px Arial, sans-serif";
+  ctx.fillText(`${cook}/100`,1090,cookY+32);ctx.textAlign="left";
+  ctx.fillStyle="#525653";ctx.fillRect(101,cookY+51,990,12);
+  ctx.fillStyle=ACCENT;ctx.fillRect(101,cookY+51,990*cook/100,12);
+  ctx.fillStyle=INK;ctx.fillRect(78,1520,1040,2);
+  ctx.font="700 21px Arial, sans-serif";ctx.fillText("NPC ROASTED  /  NO WALLET. NO MERCY.",78,1549);
+  ctx.textAlign="right";ctx.fillStyle=ACCENT;ctx.fillText("npconchain.com",1120,1549);ctx.textAlign="left";
   return canvas;
 }
 
@@ -102,7 +118,8 @@ export default function Home(){
         <div className="art"><img src={result.imageDataUrl} alt={`${result.collection} #${result.tokenId}`} /></div>
         <div className="victim">{result.collection.toUpperCase()} #{result.tokenId} · {result.headline}</div>
         <blockquote>“{result.roast}”</blockquote>
-        <div className="stats">{result.stats.map((s,i)=><div key={i}><small>{s.label}</small><strong>{s.value}</strong></div>)}</div>
+        <div className="stats">{result.stats.map((s,i)=><div key={i}><small>{s.label} · {clamp(Number(s.score))}/100</small><strong>{s.value}</strong><div aria-label={`${s.label}: ${clamp(Number(s.score))} out of 100`} style={{height:7,background:"#cccfc7",marginTop:9,borderRadius:8,overflow:"hidden"}}><div style={{height:"100%",width:`${clamp(Number(s.score))}%`,background:ACCENT,borderRadius:8}} /></div></div>)}</div>
+        <div style={{background:INK,color:PAPER,padding:"17px 20px",borderRadius:12,marginTop:15,display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",justifyContent:"space-between",fontWeight:800}}><span>COOKED LEVEL</span><span>{clamp(Number(result.cookedLevel))}/100</span></div><div style={{height:10,background:"#505451",borderRadius:8,overflow:"hidden"}}><div style={{height:"100%",width:`${clamp(Number(result.cookedLevel))}%`,background:ACCENT}} /></div></div>
         <div className="actions"><button onClick={downloadCard}>↓ DOWNLOAD CARD</button><button onClick={share}>↗ SHARE TO X</button><button onClick={roast} disabled={busy}>↻ ROAST AGAIN</button></div>
       </>:<div className="empty"><span>◉</span><h2>no victims yet.</h2><p>Enter a token ID. We're judging the character, not the owner.</p></div>}</section>
     </div><footer>NPC ROASTED · BUILT FOR THE CULTURE · npconchain.com</footer>
