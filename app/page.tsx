@@ -70,8 +70,8 @@ async function makeCard(result:RoastResult){
     ctx.fillText(s.label.toUpperCase(),x+34,y+27,statW-146);
     ctx.fillStyle=INK;const size=fitted(ctx,s.value,statW-65,27,17);
     ctx.font=`700 ${size}px Inter, sans-serif`;ctx.fillText(s.value,x+34,y+61,statW-60);
-    ctx.fillStyle="#454545";ctx.fillRect(x+34,y+79,statW-68,8);
-    ctx.fillStyle=ACCENT;ctx.fillRect(x+34,y+79,(statW-68)*score/100,8);
+    box(ctx,x+34,y+79,statW-68,8,4,"#454545");
+    if(score>0)box(ctx,x+34,y+79,(statW-68)*score/100,8,Math.min(4,(statW-68)*score/200),ACCENT);
   }
   const cook=clamp(Number(result.cookedLevel));
   const cookY=statY+2*114+10;
@@ -79,8 +79,8 @@ async function makeCard(result:RoastResult){
   ctx.fillStyle=PAPER;ctx.font="700 23px Inter, sans-serif";ctx.fillText("COOKED LEVEL",101,cookY+30);
   ctx.textAlign="right";ctx.fillStyle="#1a1a1a";ctx.font="500 29px JetBrains Mono, monospace";
   ctx.fillText(`${cook}/100`,1090,cookY+32);ctx.textAlign="left";
-  ctx.fillStyle="#b0b0b0";ctx.fillRect(101,cookY+51,990,12);
-  ctx.fillStyle=PAPER;ctx.fillRect(101,cookY+51,990*cook/100,12);
+  box(ctx,101,cookY+51,990,12,6,"#b0b0b0");
+  if(cook>0)box(ctx,101,cookY+51,990*cook/100,12,Math.min(6,990*cook/200),PAPER);
   ctx.fillStyle=INK;ctx.fillRect(78,1520,1040,2);
   ctx.font="700 21px Inter, sans-serif";ctx.fillText("NPC ROASTED / CHARACTER REPORT",78,1549);
   ctx.textAlign="right";ctx.fillStyle=ACCENT;ctx.fillText("npconchain.xyz",1120,1549);ctx.textAlign="left";
