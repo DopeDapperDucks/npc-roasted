@@ -7,3 +7,6 @@ a{color:inherit;text-decoration:none}button,input,select{font:inherit}button,a,i
 @media(max-width:780px){.columns{grid-template-columns:1fr}.controls{position:static}.hero{padding:56px 0 40px}.panel{padding:24px}.footnote{display:block}.footnote .eyebrow{margin-bottom:12px}}
 @media(max-width:640px){.shell{padding:16px}.brand{font-size:16px}.brand img{width:32px;height:32px}.nav{padding:8px 12px}.nav-link{font-size:11px}.hero>p:last-child{font-size:15px;max-width:320px}.panel{padding:20px}.character-stage,.art{border-radius:22px}.stats{gap:8px}.stat{padding:12px}.stat-label{font-size:9px;gap:6px;flex-wrap:wrap}.footnote{padding:32px 0}footer{flex-direction:column;text-align:center;gap:10px}footer a{margin:0}.report-heading{gap:8px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Keep form text readable without focus zoom on phones and touch screens. */
+@media (max-width:780px), (pointer:coarse){select,input:not([type=radio]){font-size:16px}}
