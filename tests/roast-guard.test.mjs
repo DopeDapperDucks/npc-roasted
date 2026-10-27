@@ -11,6 +11,42 @@ const env = {
 const headers = new Headers({ "x-vercel-forwarded-for": "192.0.2.10" });
 const reply = result => async () => Response.json({ result });
 
+test("Vercel KV variables work without duplicate Upstash variables", async () => {
+  const kv = { ...env, UPSTASH_REDIS_REST_URL: "", UPSTASH_REDIS_REST_TOKEN: "",
+    KV_REST_API_URL: "https://marketplace.upstash.io", KV_REST_API_TOKEN: "test-only-write-token" };
+  let calls = 0;
+  assert.equal(await checkRoastLimit(headers, kv, async (url, options) => {
+    calls++;
+    assert.equal(String(url), kv.KV_REST_API_URL + "/");
+    assert.equal(options.headers.Authorization, `Bearer ${kv.KV_REST_API_TOKEN}`);
+    return Response.json({ result: [0, 0] });
+  }), null);
+  assert.equal(calls, 1);
+});
+
+test("explicit Upstash credentials take precedence as a complete pair", async () => {
+  assert.equal(await checkRoastLimit(headers, { ...env,
+    KV_REST_API_URL: "https://other.upstash.io", KV_REST_API_TOKEN: "other-test-token" }, async (url, options) => {
+    assert.equal(String(url), env.UPSTASH_REDIS_REST_URL + "/");
+    assert.equal(options.headers.Authorization, `Bearer ${env.UPSTASH_REDIS_REST_TOKEN}`);
+    return Response.json({ result: [0, 0] });
+  }), null);
+});
+
+test("partial pairs and a read-only KV token cannot enable generation", async () => {
+  const kv = { ...env, UPSTASH_REDIS_REST_URL: undefined, UPSTASH_REDIS_REST_TOKEN: undefined,
+    KV_REST_API_URL: "https://marketplace.upstash.io", KV_REST_API_TOKEN: "test-only-write-token" };
+  for (const change of [
+    { UPSTASH_REDIS_REST_URL: "https://explicit.upstash.io" },
+    { UPSTASH_REDIS_REST_TOKEN: "explicit-test-token" },
+    { KV_REST_API_TOKEN: undefined, KV_REST_API_READ_ONLY_TOKEN: "test-only-read-token" },
+    { KV_REST_API_URL: undefined },
+  ]) {
+    const result = await checkRoastLimit(headers, { ...kv, ...change }, () => assert.fail("must not call Redis"));
+    assert.equal(result.status, 503);
+  }
+});
+
 test("canonical addresses share a quota, including IPv6 /64 and mapped IPv4", () => {
   assert.equal(networkAddress("2001:db8:abcd:1234::1"), networkAddress("2001:0db8:abcd:1234:ffff::123"));
   assert.notEqual(networkAddress("2001:db8:abcd:1234::1"), networkAddress("2001:db8:abcd:1235::1"));

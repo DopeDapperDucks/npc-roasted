@@ -85,3 +85,14 @@ Implementation references:
 - https://vercel.com/docs/headers/request-headers
 - https://upstash.com/docs/redis/features/restapi
 - https://redis.io/docs/latest/develop/programmability/eval-intro/
+
+## Vercel Marketplace variable compatibility
+
+The guard now accepts the existing KV_REST_API_URL / KV_REST_API_TOKEN pair
+created by Vercel’s Upstash integration. No duplicate database variables are
+needed. An explicit UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN pair
+takes precedence when either explicit setting is nonempty; incomplete explicit
+configuration fails closed rather than mixing credentials from different stores.
+KV_REST_API_READ_ONLY_TOKEN and REDIS_URL/KV_URL are not used.
+ROAST_RATE_LIMIT_SECRET remains required. This compatibility follow-up is local
+until its scoped review/publication approval is recorded.

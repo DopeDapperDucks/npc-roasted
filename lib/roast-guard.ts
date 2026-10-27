@@ -60,8 +60,10 @@ export async function checkRoastLimit(headers: Headers, env: Env = process.env, 
     return { status: 503, error: "Roasts are paused. Please try again later.", retryAfter: 300 };
   }
   try {
-    const url = new URL(env.UPSTASH_REDIS_REST_URL || "");
-    const token = env.UPSTASH_REDIS_REST_TOKEN;
+    // Treat credentials as a pair: never combine URLs/tokens from two stores.
+    const explicit = Boolean(env.UPSTASH_REDIS_REST_URL || env.UPSTASH_REDIS_REST_TOKEN);
+    const url = new URL((explicit ? env.UPSTASH_REDIS_REST_URL : env.KV_REST_API_URL) || "");
+    const token = explicit ? env.UPSTASH_REDIS_REST_TOKEN : env.KV_REST_API_TOKEN;
     const secret = env.ROAST_RATE_LIMIT_SECRET;
     if (url.protocol !== "https:" || !url.hostname.endsWith(".upstash.io") || url.username || url.password || url.port || url.pathname !== "/" || url.search || url.hash || !token || !secret || secret.length < 32) {
       throw new Error("Missing limiter configuration");
