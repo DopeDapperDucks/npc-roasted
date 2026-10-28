@@ -1,25 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
+import { checkRoastLimit } from "../../../lib/roast-guard";
 export const runtime = "nodejs";
 const CONTRACTS: Record<string,string> = {
   npc: "0xa2a6063b910fc7a7a286196f6c9b62b2797fa0ae",
   pc: "0xe7d97e9e47ad0640f92f43f204e5fcce2ce8b20e"
 };
-const LIMIT = new Map<string,{count:number,until:number}>();
 function fail(error:string,status:number){return NextResponse.json({error},{status});}
 function publicHttps(u:string){try{const url=new URL(u);const host=url.hostname.toLowerCase();return url.protocol==="https:" && host!=="localhost" && !host.endsWith(".localhost") && !host.endsWith(".local") && !host.endsWith(".internal") && !/^\d+\.\d+\.\d+\.\d+$/.test(host) && !host.includes(":");}catch{return false;}}
 export async function POST(req:NextRequest){
   try {
-    const body=await req.json(); const tokenId=String(body.tokenId||"");
+    if (req.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") return fail("Send a JSON request.",415);
+    // Enforce the actual streamed body size, even without Content-Length.
+    const reader=req.body?.getReader();if(!reader)return fail("Send a JSON request.",400);
+    let size=0;const chunks:Uint8Array[]=[];
+    try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>2048){await reader.cancel();return fail("Request is too large.",413);}chunks.push(value);}}finally{reader.releaseLock();}
+    let body;try{body=JSON.parse(Buffer.concat(chunks).toString("utf8"));}catch{return fail("Send valid JSON.",400);}
+    if(!body||typeof body!=="object"||Array.isArray(body))return fail("Send a JSON object.",400);
+    const tokenId=String(body.tokenId||"");
     const collection=String(body.collection||"");const level=String(body.level||"");
-    if(!/^\d{1,30}$/.test(tokenId)||!CONTRACTS[collection]||!["Mild","Spicy","Absolutely Cooked"].includes(level))return fail("Enter a valid token ID, collection and roast level.",400);
+    if(!/^\d{1,30}$/.test(tokenId)||!Object.hasOwn(CONTRACTS,collection)||!["Mild","Spicy","Absolutely Cooked"].includes(level))return fail("Enter a valid token ID, collection and roast level.",400);
     if(!process.env.OPENAI_API_KEY)return fail("OPENAI_API_KEY has not been configured yet.",503);
-    const ip=(req.headers.get("x-forwarded-for")||"unknown").split(",")[0].trim();const now=Date.now();const record=LIMIT.get(ip);if(record&&record.until>now&&record.count>=8)return fail("Too many roasts. Try again in an hour.",429);
-    LIMIT.set(ip,record&&record.until>now?{...record,count:record.count+1}:{count:1,until:now+3600000});
-    // A best-effort in-memory throttle. Replace with a durable shared rate limiter before public launch.
     // Fetch revealed metadata from OpenSea's *metadata* endpoint.
     // The generic Get NFT endpoint can return the old pre-reveal cartridge.
     if (!process.env.OPENSEA_API_KEY) return fail("Set OPENSEA_API_KEY in Vercel to fetch revealed artwork.",503);
+    const blocked=await checkRoastLimit(req.headers);
+    if(blocked)return NextResponse.json({error:blocked.error},{status:blocked.status,headers:{"Retry-After":String(blocked.retryAfter),"Cache-Control":"no-store"}});
     const osURL=`https://api.opensea.io/api/v2/metadata/ethereum/${CONTRACTS[collection]}/${tokenId}`;
     const osResponse=await fetch(osURL,{
       headers:{"x-api-key":process.env.OPENSEA_API_KEY,"accept":"application/json"},
