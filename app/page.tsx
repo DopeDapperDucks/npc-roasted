@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Stat = {label:string; value:string; score:number};
 type RoastResult = {tokenId:string; collection:string; imageDataUrl:string; roast:string; headline:string; stats:Stat[]; cookedLevel:number; traitsSeen:string[]};
@@ -9,7 +9,10 @@ const INK = "#ffffff", PAPER = "#1a1a1a", PALE = "#252525", ACCENT = "#ffffff";
 
 // Canvas helpers receive a non-null context explicitly: no ctx! assertions needed.
 function box(ctx:CanvasRenderingContext2D,x:number,y:number,w:number,h:number,r:number,fill:string,stroke?:string){
-  ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fillStyle=fill;ctx.fill();
+  ctx.beginPath();
+  if(typeof ctx.roundRect==="function")ctx.roundRect(x,y,w,h,r);
+  else ctx.rect(x,y,w,h);
+  ctx.fillStyle=fill;ctx.fill();
   if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke();}
 }
 function fitted(ctx:CanvasRenderingContext2D,text:string,maxW:number,start:number,min:number,weight="700"){
@@ -94,19 +97,60 @@ export default function Home(){
   const [result,setResult]=useState<RoastResult|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
-  const [exporting,setExporting]=useState(false);
+  const [card,setCard]=useState<{result:RoastResult;url:string;file:File;canShare:boolean}|null>(null);
+  const [cardError,setCardError]=useState("");
+  const [cardAttempt,setCardAttempt]=useState(0);
+  const [sharing,setSharing]=useState(false);
+  const reportRef=useRef<HTMLElement>(null);
   const [notice,setNotice]=useState("");
+  const readyCard=card?.result===result?card:null;
+  useEffect(()=>{
+    if(!result)return;
+    let cancelled=false;
+    let url:string|undefined;
+    setCard(null);setCardError("");
+    async function prepareCard(current:RoastResult){
+      try{
+        const canvas=await makeCard(current);
+        const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error("PNG export failed")),"image/png"));
+        // Release the canvas backing store once the PNG has been encoded.
+        canvas.width=0;canvas.height=0;
+        if(cancelled)return;
+        const file=new File([blob],`npc-roasted-${current.collection}-${current.tokenId}.png`,{type:"image/png"});
+        url=URL.createObjectURL(blob);
+        let canShare=false;
+        try{canShare=typeof navigator.share==="function"&&typeof navigator.canShare==="function"&&navigator.canShare({files:[file]});}catch{/* Direct saving remains available. */}
+        setCard({result:current,url,file,canShare});
+      }catch{
+        if(!cancelled)setCardError("Could not prepare your card. Try again below.");
+      }
+    }
+    void prepareCard(result);
+    return ()=>{cancelled=true;if(url)URL.revokeObjectURL(url);};
+  },[result,cardAttempt]);
+  useEffect(()=>{
+    if(result&&window.matchMedia("(max-width: 780px)").matches){
+      reportRef.current?.scrollIntoView({block:"start",behavior:"instant"});
+      reportRef.current?.focus({preventScroll:true});
+    }
+  },[result]);
+  async function saveCard(){
+    if(!readyCard||sharing)return;
+    setSharing(true);setNotice("");
+    try{
+      // Call share directly from the tap, with the already-prepared file.
+      await navigator.share({files:[readyCard.file]});
+      setNotice("Card shared.");
+    }catch(e){
+      if(!(e instanceof Error&&e.name==="AbortError"))setNotice("Use Download PNG, or touch and hold the card below to save it. In an in-app browser, open this page in Safari or Chrome if saving is unavailable.");
+    }finally{setSharing(false);}
+  }
   async function roast(){
     if(busy)return;setError("");setNotice("");setBusy(true);
     try{const res=await fetch("/api/roast",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tokenId,collection,level})});
       const data=await res.json();if(!res.ok)throw new Error(data.error||"Could not roast that NFT.");setResult(data);
     }catch(e){setError(e instanceof Error?e.message:"Something went wrong.");}finally{setBusy(false);}
   }
-  async function downloadCard(){if(!result||exporting)return;setExporting(true);setError("");try{
-    const canvas=await makeCard(result);const link=document.createElement("a");
-    link.download=`npc-roasted-${result.collection}-${result.tokenId}.png`;
-    link.href=canvas.toDataURL("image/png");document.body.appendChild(link);link.click();link.remove();setNotice("Card downloaded.");
-  }catch(e){console.error(e);setError("Unable to export the card. Please try again.");}finally{setExporting(false);}}
   function share(){if(!result)return;const text=`${result.collection.toUpperCase()} #${result.tokenId} got a character report.\n\n“${result.roast}”\n\nTry yours: ${window.location.origin}\n#NPCRoasted`;
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,"_blank","noopener,noreferrer");}
   return <main className="shell">
@@ -124,13 +168,23 @@ export default function Home(){
         </fieldset><p className="hint reassurance">Original artwork. Fictional ratings. No wallet connection.</p>
         <div role="status" aria-live="polite" className="status">{busy?"Loading artwork and generating your report. This may take a moment.":notice}</div>{error&&<p role="alert" className="error">{error}</p>}
       </form>
-      <section className="panel report" aria-labelledby="report-title" aria-busy={busy}>
+      <section ref={reportRef} tabIndex={-1} className="panel report" aria-labelledby="report-title" aria-busy={busy}>
         <div className="report-heading"><p className="eyebrow">STEP 02 / THE REPORT</p><span className="badge">{busy?"Generating":result?"Roasted":"Awaiting character"}</span></div>
         {result?<><div className="art"><img src={result.imageDataUrl} alt={`${result.collection.toUpperCase()} #${result.tokenId} original artwork`}/></div>
           <p className="eyebrow identity">{result.collection.toUpperCase()} #{result.tokenId}</p><h2 id="report-title">{result.headline.replace(/[.!?]+$/, "")}.</h2><blockquote>“{result.roast}”</blockquote>
           <div className="stats">{result.stats.map((s,i)=><div className="stat" key={i}><div className="stat-label"><span>{s.label}</span><span>{clamp(Number(s.score))}/100</span></div><strong>{s.value}</strong><meter min="0" max="100" value={clamp(Number(s.score))} aria-label={s.label}/></div>)}</div>
           <div className="cooked"><div className="stat-label"><span>Cooked level</span><span>{clamp(Number(result.cookedLevel))}/100</span></div><meter min="0" max="100" value={clamp(Number(result.cookedLevel))} aria-label="Cooked level"/></div>
-          <div className="actions"><button onClick={downloadCard} disabled={exporting||busy}>{exporting?"Exporting…":"Download card ↓"}</button><button onClick={share} disabled={busy}>Share to X ↗</button><button onClick={roast} disabled={busy}>Roast again ↻</button></div>
+          <div className="actions">
+            {readyCard?<><a href="#saved-card">View card ↓</a><a href={readyCard.url} download={readyCard.file.name}>Download PNG ↓</a>{readyCard.canShare&&<button onClick={saveCard} disabled={sharing||busy}>{sharing?"Sharing…":"Save / share card ↗"}</button>}</>:<button disabled={!cardError||busy} onClick={()=>setCardAttempt(n=>n+1)}>{cardError?"Retry card":"Preparing card…"}</button>}
+            <button onClick={share} disabled={busy}>Share to X ↗</button><button onClick={roast} disabled={busy||sharing}>Roast again ↻</button>
+          </div>
+          <div className="card-status" role="status" aria-live="polite">{notice||cardError||(!readyCard?"Preparing your PNG card…":"Your card is ready to view and save.")}</div>
+          {readyCard&&<section id="saved-card" className="saved-card" aria-label="Your downloadable roast card">
+            <h3>your card.</h3>
+            <p>Download the PNG, or touch and hold the image to save it. {readyCard.canShare&&<>On iPhone, Save / share card opens options including Save Image. </>}If saving is unavailable in an in-app browser, open this page in Safari or Chrome.</p>
+            <a href={readyCard.url} target="_blank" rel="noopener noreferrer">Open full-size card ↗</a>
+            <img src={readyCard.url} width="1200" height="1600" alt={`${result.collection.toUpperCase()} #${result.tokenId} roast card: ${result.headline}. ${result.roast}`}/>
+          </section>}
         </>:<div className="empty"><div className="character-stage"><img src="/npc/tier-6-white.png" alt="Official white Playable Character, standing still" width="240" height="360"/></div><h2 id="report-title">nothing to report.</h2><p>they've said nothing.<br/>we'll take it from here.</p><span className="eyebrow">Your report appears here</span></div>}
       </section>
     </div><aside className="footnote"><span className="eyebrow">SMALL PRINT / BIG HEADS</span><p>AI-generated jokes about fictional characters. The character gets roasted. The holder doesn't.</p></aside>
