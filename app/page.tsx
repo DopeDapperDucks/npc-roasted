@@ -83,7 +83,7 @@ async function makeCard(result:RoastResult){
   if(cook>0)box(ctx,101,cookY+51,990*cook/100,12,Math.min(6,990*cook/200),PAPER);
   ctx.fillStyle=INK;ctx.fillRect(78,1520,1040,2);
   ctx.font="700 21px Inter, sans-serif";ctx.fillText("NPC ROASTED / CHARACTER REPORT",78,1549);
-  ctx.textAlign="right";ctx.fillStyle=ACCENT;ctx.fillText("npconchain.xyz",1120,1549);ctx.textAlign="left";
+  ctx.textAlign="right";ctx.fillStyle=ACCENT;ctx.fillText("npconchain.com",1120,1549);ctx.textAlign="left";
   return canvas;
 }
 
@@ -111,7 +111,7 @@ export default function Home(){
     window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,"_blank","noopener,noreferrer");}
   return <main className="shell">
     <a className="skip" href="#roast-form">Skip to roast form</a>
-    <header className="nav"><a className="brand" href="/" aria-label="NPC Roasted home"><img src="/npc/npc-logo.png" alt="" width="40" height="40"/><span>NPC Roasted.</span></a><a className="nav-link" href="https://npconchain.xyz" target="_blank" rel="noopener noreferrer">NPC world ↗</a></header>
+    <header className="nav"><a className="brand" href="/" aria-label="NPC Roasted home"><img src="/npc/npc-logo.png" alt="" width="40" height="40"/><span>NPC Roasted.</span></a><a className="nav-link" href="https://npconchain.com" target="_blank" rel="noopener noreferrer">NPC world ↗</a></header>
     <section className="hero"><p className="eyebrow">NPC / CHARACTER REPORT</p><h1>standing there.<br/>getting roasted.</h1><p>Pick an NPC or PC. Get a roast based on its artwork and a card to keep. No wallet needed.</p></section>
     <div className="columns">
       <form id="roast-form" className="panel controls" onSubmit={e=>{e.preventDefault();void roast();}}>
@@ -134,6 +134,6 @@ export default function Home(){
         </>:<div className="empty"><div className="character-stage"><img src="/npc/tier-6-white.png" alt="Official white Playable Character, standing still" width="240" height="360"/></div><h2 id="report-title">nothing to report.</h2><p>they've said nothing.<br/>we'll take it from here.</p><span className="eyebrow">Your report appears here</span></div>}
       </section>
     </div><aside className="footnote"><span className="eyebrow">SMALL PRINT / BIG HEADS</span><p>AI-generated jokes about fictional characters. The character gets roasted. The holder doesn't.</p></aside>
-    <footer><img src="/npc/npc-logo.png" alt="NPC" width="28" height="28"/><span>NPC Roasted / background checks.</span><a href="https://npconchain.xyz">npconchain.xyz ↗</a></footer>
+    <footer><img src="/npc/npc-logo.png" alt="NPC" width="28" height="28"/><span>NPC Roasted / background checks.</span><a href="https://npconchain.com">npconchain.com ↗</a></footer>
   </main>;
 }
